@@ -8,13 +8,18 @@ import (
 
 func (s *Service) CreateVessel(input CreateVesselInput) (domain.Vessel, error) {
 	now := s.clock.Now()
+	windows, err := domain.NormalizeMaintenanceWindows(input.Maintenance, now)
+	if err != nil {
+		return domain.Vessel{}, err
+	}
 	vessel := domain.Vessel{
-		Code:      domain.NormalizeVesselCode(input.Code),
-		CapacityL: input.CapacityL,
-		State:     domain.VesselAvailable,
-		Version:   1,
-		CreatedAt: now,
-		UpdatedAt: now,
+		Code:        domain.NormalizeVesselCode(input.Code),
+		CapacityL:   input.CapacityL,
+		State:       domain.VesselAvailable,
+		Maintenance: windows,
+		Version:     1,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 	if err := vessel.Validate(); err != nil {
 		return domain.Vessel{}, err
@@ -108,6 +113,32 @@ func (s *Service) FinishCleaning(
 		}
 		snapshot.Vessels[id] = vessel
 		updated = vessel
+		return nil
+	})
+	if err != nil {
+		return domain.Vessel{}, err
+	}
+	return updated, nil
+}
+
+func (s *Service) SetVesselMaintenance(
+	id string,
+	input SetVesselMaintenanceInput,
+) (domain.Vessel, error) {
+	var updated domain.Vessel
+	err := s.store.Execute(func(snapshot *domain.Snapshot) error {
+		vessel, ok := snapshot.Vessels[id]
+		if !ok {
+			return domain.NewError(domain.CodeVesselNotFound, "vessel was not found")
+		}
+		if err := s.checkExpected(vessel.Version, input.ExpectedVersion); err != nil {
+			return err
+		}
+		if err := vessel.SetMaintenance(input.Windows, s.clock.Now()); err != nil {
+			return err
+		}
+		snapshot.Vessels[id] = vessel
+		updated = vessel.Clone()
 		return nil
 	})
 	if err != nil {

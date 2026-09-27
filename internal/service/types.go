@@ -9,11 +9,33 @@ import (
 type CreateFormulaInput struct {
 	Name                  string
 	Style                 string
+	Tags                  []string
 	TargetOriginalGravity float64
 	TargetFinalGravity    float64
 	MaxFermentationTempC  float64
 	MinimumDays           int
 	MaximumDays           int
+}
+
+type SetFormulaTagsInput struct {
+	ExpectedVersion *int64
+	Tags            []string
+}
+
+type FormulaFilter struct {
+	Name   string
+	Style  string
+	State  string
+	Tags   []string
+	Limit  int
+	Offset int
+}
+
+type FormulaPage struct {
+	Formulas []domain.Formula `json:"formulas"`
+	Total    int              `json:"total"`
+	Limit    int              `json:"limit"`
+	Offset   int              `json:"offset"`
 }
 
 type SetFormulaStepsInput struct {
@@ -26,8 +48,14 @@ type VersionInput struct {
 }
 
 type CreateVesselInput struct {
-	Code      string
-	CapacityL float64
+	Code        string
+	CapacityL   float64
+	Maintenance []domain.MaintenanceWindow
+}
+
+type SetVesselMaintenanceInput struct {
+	ExpectedVersion *int64
+	Windows         []domain.MaintenanceWindow
 }
 
 type CreateRunInput struct {

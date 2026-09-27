@@ -13,14 +13,49 @@ const (
 )
 
 type Vessel struct {
-	ID          string      `json:"id"`
-	Code        string      `json:"code"`
-	CapacityL   float64     `json:"capacity_liters"`
-	State       VesselState `json:"state"`
-	ActiveRunID *string     `json:"active_run_id,omitempty"`
-	Version     int64       `json:"version"`
-	CreatedAt   time.Time   `json:"created_at"`
-	UpdatedAt   time.Time   `json:"updated_at"`
+	ID          string              `json:"id"`
+	Code        string              `json:"code"`
+	CapacityL   float64             `json:"capacity_liters"`
+	State       VesselState         `json:"state"`
+	ActiveRunID *string             `json:"active_run_id,omitempty"`
+	Maintenance []MaintenanceWindow `json:"maintenance_windows"`
+	Version     int64               `json:"version"`
+	CreatedAt   time.Time           `json:"created_at"`
+	UpdatedAt   time.Time           `json:"updated_at"`
+}
+
+func (v Vessel) Clone() Vessel {
+	cloned := v
+	cloned.Maintenance = append([]MaintenanceWindow{}, v.Maintenance...)
+	if v.ActiveRunID != nil {
+		runID := *v.ActiveRunID
+		cloned.ActiveRunID = &runID
+	}
+	return cloned
+}
+
+func (v Vessel) UnderMaintenance(at time.Time) bool {
+	for _, window := range v.Maintenance {
+		if window.Contains(at) {
+			return true
+		}
+	}
+	return false
+}
+
+func (v *Vessel) SetMaintenance(windows []MaintenanceWindow, now time.Time) error {
+	if v.State != VesselAvailable {
+		return NewError(CodeVesselState,
+			"maintenance can only be scheduled on an available vessel")
+	}
+	normalized, err := NormalizeMaintenanceWindows(windows, now)
+	if err != nil {
+		return err
+	}
+	v.Maintenance = normalized
+	v.UpdatedAt = now.UTC()
+	v.Version++
+	return nil
 }
 
 func (v Vessel) Validate() error {
@@ -100,6 +135,7 @@ func (v *Vessel) Retire(now time.Time) error {
 		return NewError(CodeVesselState, "only an available vessel can be retired")
 	}
 	v.State = VesselRetired
+	v.Maintenance = []MaintenanceWindow{}
 	v.UpdatedAt = now.UTC()
 	v.Version++
 	return nil

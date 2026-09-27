@@ -71,14 +71,37 @@ Formula workflow:
 - `GET /v1/formulas`
 - `GET /v1/formulas/{id}`
 - `PUT /v1/formulas/{id}/steps`
+- `PUT /v1/formulas/{id}/tags`
 - `POST /v1/formulas/{id}/approve`
 - `POST /v1/formulas/{id}/retire`
+
+`GET /v1/formulas` accepts optional query filters: `name` (full name after
+normalization), `style`, `state` (`draft`, `approved`, `retired`), and repeated
+`tag` parameters that must all be present on a formula. Results are ordered by
+name with the identifier as tie-break and paginated with `limit` (1-200,
+default 50) and `offset` (0 or more). The response is a page object:
+
+```json
+{
+  "formulas": [],
+  "total": 0,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+`total` always counts every formula matching the filters, so clients can page
+through the result set without missing or duplicating entries. Tags are
+replaced atomically with `PUT /v1/formulas/{id}/tags`; retagging changes only
+future list results and never alters process steps, lifecycle state, or run
+references.
 
 Vessel workflow:
 
 - `POST /v1/vessels`
 - `GET /v1/vessels`
 - `GET /v1/vessels/{id}`
+- `PUT /v1/vessels/{id}/maintenance`
 - `POST /v1/vessels/{id}/finish-cleaning`
 - `POST /v1/vessels/{id}/retire`
 
@@ -113,6 +136,7 @@ Run each production workflow check separately:
 
 ```bash
 go run ./cmd/fermentctl check formula-approval
+go run ./cmd/fermentctl check formula-tagging
 go run ./cmd/fermentctl check vessel-run-lifecycle
 go run ./cmd/fermentctl check observations-completion
 ```

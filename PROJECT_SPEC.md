@@ -24,14 +24,19 @@ deferred to a later engineering task.
 
 ### Formula
 
-A formula contains an identifier, normalized name, style label, target original
-gravity, target final gravity, maximum fermentation temperature, minimum and
-maximum planned days, ordered process steps, lifecycle state, version, and
-timestamps.
+A formula contains an identifier, normalized name, style label, custom tags,
+target original gravity, target final gravity, maximum fermentation
+temperature, minimum and maximum planned days, ordered process steps,
+lifecycle state, version, and timestamps.
 
 States are `draft`, `approved`, and `retired`.
 
 - Names are unique after case folding and whitespace normalization.
+- A formula carries at most 16 tags; each tag is at most 40 characters after
+  whitespace normalization, and tags are unique after case folding.
+- Tags may be replaced on a formula in any state. Retagging changes only
+  future list query results; it never alters process steps, lifecycle state,
+  or the formula reference held by a run.
 - Target original gravity is in the inclusive range 1.030 to 1.120.
 - Target final gravity is positive, lower than target original gravity, and
   differs from it by at least 0.005.
@@ -42,7 +47,8 @@ States are `draft`, `approved`, and `retired`.
 - Step temperatures are in the inclusive range 5 to 90 Celsius.
 - Step hold times are 1 to 1440 minutes.
 - `draft -> approved` requires a complete valid step list.
-- An approved formula is immutable.
+- An approved formula's process content is immutable; only its tags may
+  change.
 - `approved -> retired` is allowed only when no run currently uses it.
 
 ### Vessel
@@ -104,13 +110,22 @@ time, gravity, temperature, optional note, and receipt time.
 Public entry points are:
 
 - `POST /v1/formulas`
+- `GET /v1/formulas`
 - `PUT /v1/formulas/{id}/steps`
+- `PUT /v1/formulas/{id}/tags`
 - `POST /v1/formulas/{id}/approve`
 - `GET /v1/formulas/{id}`
 
 The client creates a draft, sets its process step list atomically, approves it,
 and reads the approved record. Invalid ranges, duplicate names, empty steps,
 and repeated approval return stable error codes without partial writes.
+
+The list endpoint filters by full normalized name, style, lifecycle state, and
+one or more tags that must all be present. Results are ordered by name with
+the identifier as tie-break and paginated by `limit` and `offset`; the
+response reports the total match count alongside each page so the total and
+the paged entries always agree. Duplicate tags, malformed pagination
+parameters, and stale expected versions return stable error codes.
 
 This path crosses HTTP protocol handling, application orchestration, domain
 rules, and snapshot storage.
@@ -210,11 +225,12 @@ task owns systematic tests for validation boundaries, state transitions,
 numeric calculations, stale revisions, storage failures, and concurrent
 reservation attempts.
 
-The current build command is `go build ./...`. Three bounded production checks
+The current build command is `go build ./...`. Four bounded production checks
 start the real HTTP handler, issue real JSON requests, check success and failure
 behavior, and exit without external services:
 
 - `go run ./cmd/fermentctl check formula-approval`
+- `go run ./cmd/fermentctl check formula-tagging`
 - `go run ./cmd/fermentctl check vessel-run-lifecycle`
 - `go run ./cmd/fermentctl check observations-completion`
 

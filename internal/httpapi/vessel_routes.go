@@ -3,12 +3,18 @@ package httpapi
 import (
 	"net/http"
 
+	"github.com/1260124186-cc/solo-0016-cellar-run-control/internal/domain"
 	"github.com/1260124186-cc/solo-0016-cellar-run-control/internal/service"
 )
 
 type createVesselRequest struct {
-	Code      string  `json:"code"`
-	CapacityL float64 `json:"capacity_liters"`
+	Code        string                     `json:"code"`
+	CapacityL   float64                    `json:"capacity_liters"`
+	Maintenance []domain.MaintenanceWindow `json:"maintenance_windows"`
+}
+
+type setMaintenanceRequest struct {
+	Windows []domain.MaintenanceWindow `json:"windows"`
 }
 
 func registerVesselRoutes(mux *http.ServeMux, app *service.Service) {
@@ -18,8 +24,9 @@ func registerVesselRoutes(mux *http.ServeMux, app *service.Service) {
 			return
 		}
 		vessel, err := app.CreateVessel(service.CreateVesselInput{
-			Code:      body.Code,
-			CapacityL: body.CapacityL,
+			Code:        body.Code,
+			CapacityL:   body.CapacityL,
+			Maintenance: body.Maintenance,
 		})
 		if err != nil {
 			writeDomainError(response, err)
@@ -39,6 +46,24 @@ func registerVesselRoutes(mux *http.ServeMux, app *service.Service) {
 
 	mux.HandleFunc("GET /v1/vessels/{id}", func(response http.ResponseWriter, request *http.Request) {
 		vessel, err := app.GetVessel(request.PathValue("id"))
+		if err != nil {
+			writeDomainError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, vessel)
+	})
+
+	mux.HandleFunc("PUT /v1/vessels/{id}/maintenance", func(response http.ResponseWriter, request *http.Request) {
+		body, err := decodeJSON[setMaintenanceRequest](response, request)
+		if !handleDecode(response, err) {
+			return
+		}
+		expected, err := expectedVersion(request)
+		if !handleDecode(response, err) {
+			return
+		}
+		vessel, err := app.SetVesselMaintenance(request.PathValue("id"),
+			service.SetVesselMaintenanceInput{ExpectedVersion: expected, Windows: body.Windows})
 		if err != nil {
 			writeDomainError(response, err)
 			return

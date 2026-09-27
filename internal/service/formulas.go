@@ -7,11 +7,21 @@ import (
 	"github.com/1260124186-cc/solo-0016-cellar-run-control/internal/domain"
 )
 
+const (
+	DefaultFormulaListLimit = 50
+	MaxFormulaListLimit     = 200
+)
+
 func (s *Service) CreateFormula(input CreateFormulaInput) (domain.Formula, error) {
 	now := s.clock.Now()
+	tags, err := domain.NormalizeTags(input.Tags)
+	if err != nil {
+		return domain.Formula{}, err
+	}
 	formula := domain.Formula{
 		Name:                  input.Name,
 		Style:                 input.Style,
+		Tags:                  tags,
 		TargetOriginalGravity: input.TargetOriginalGravity,
 		TargetFinalGravity:    input.TargetFinalGravity,
 		MaxFermentationTempC:  input.MaxFermentationTempC,
@@ -129,6 +139,32 @@ func (s *Service) RetireFormula(id string, input VersionInput) (domain.Formula, 
 	return updated, nil
 }
 
+func (s *Service) SetFormulaTags(
+	id string,
+	input SetFormulaTagsInput,
+) (domain.Formula, error) {
+	var updated domain.Formula
+	err := s.store.Execute(func(snapshot *domain.Snapshot) error {
+		formula, ok := snapshot.Formulas[id]
+		if !ok {
+			return domain.NewError(domain.CodeFormulaNotFound, "formula was not found")
+		}
+		if err := s.checkExpected(formula.Version, input.ExpectedVersion); err != nil {
+			return err
+		}
+		if err := formula.SetTags(input.Tags, s.clock.Now()); err != nil {
+			return err
+		}
+		snapshot.Formulas[id] = formula
+		updated = formula.Clone()
+		return nil
+	})
+	if err != nil {
+		return domain.Formula{}, err
+	}
+	return updated, nil
+}
+
 func (s *Service) GetFormula(id string) (domain.Formula, error) {
 	var found domain.Formula
 	err := s.store.View(func(snapshot domain.Snapshot) error {
@@ -145,25 +181,105 @@ func (s *Service) GetFormula(id string) (domain.Formula, error) {
 	return found, nil
 }
 
-func (s *Service) ListFormulas() ([]domain.Formula, error) {
-	var formulas []domain.Formula
+func (s *Service) ListFormulas(filter FormulaFilter) (FormulaPage, error) {
+	if filter.Limit < 1 || filter.Limit > MaxFormulaListLimit {
+		return FormulaPage{}, domain.FieldError(domain.CodeInvalidInput, "limit",
+			"must be between 1 and 200")
+	}
+	if filter.Offset < 0 {
+		return FormulaPage{}, domain.FieldError(domain.CodeInvalidInput, "offset",
+			"must not be negative")
+	}
+	var stateFilter domain.FormulaState
+	if filter.State != "" {
+		switch domain.FormulaState(filter.State) {
+		case domain.FormulaDraft, domain.FormulaApproved, domain.FormulaRetired:
+			stateFilter = domain.FormulaState(filter.State)
+		default:
+			return FormulaPage{}, domain.FieldError(domain.CodeInvalidInput, "state",
+				"must be one of draft, approved, retired")
+		}
+	}
+	tagKeys := make(map[string]struct{}, len(filter.Tags))
+	for _, raw := range filter.Tags {
+		tag := domain.NormalizeTag(raw)
+		if tag == "" {
+			return FormulaPage{}, domain.FieldError(domain.CodeInvalidInput, "tag",
+				"must not be empty")
+		}
+		tagKeys[domain.TagKey(tag)] = struct{}{}
+	}
+	nameKey := ""
+	if filter.Name != "" {
+		nameKey = domain.NameKey(filter.Name)
+	}
+	styleKey := ""
+	if filter.Style != "" {
+		styleKey = domain.NameKey(filter.Style)
+	}
+
+	var matched []domain.Formula
 	err := s.store.View(func(snapshot domain.Snapshot) error {
-		formulas = make([]domain.Formula, 0, len(snapshot.Formulas))
+		matched = make([]domain.Formula, 0, len(snapshot.Formulas))
 		for _, formula := range snapshot.Formulas {
-			formulas = append(formulas, formula.Clone())
+			if !formulaMatches(formula, nameKey, styleKey, stateFilter, tagKeys) {
+				continue
+			}
+			matched = append(matched, formula.Clone())
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return FormulaPage{}, err
 	}
-	sort.Slice(formulas, func(i, j int) bool {
-		if formulas[i].Name == formulas[j].Name {
-			return formulas[i].ID < formulas[j].ID
+	sort.Slice(matched, func(i, j int) bool {
+		if matched[i].Name == matched[j].Name {
+			return matched[i].ID < matched[j].ID
 		}
-		return formulas[i].Name < formulas[j].Name
+		return matched[i].Name < matched[j].Name
 	})
-	return formulas, nil
+	total := len(matched)
+	page := make([]domain.Formula, 0, min(filter.Limit, total))
+	if filter.Offset < total {
+		end := min(filter.Offset+filter.Limit, total)
+		page = append(page, matched[filter.Offset:end]...)
+	}
+	return FormulaPage{
+		Formulas: page,
+		Total:    total,
+		Limit:    filter.Limit,
+		Offset:   filter.Offset,
+	}, nil
+}
+
+func formulaMatches(
+	formula domain.Formula,
+	nameKey string,
+	styleKey string,
+	state domain.FormulaState,
+	tagKeys map[string]struct{},
+) bool {
+	if nameKey != "" && domain.NameKey(formula.Name) != nameKey {
+		return false
+	}
+	if styleKey != "" && domain.NameKey(formula.Style) != styleKey {
+		return false
+	}
+	if state != "" && formula.State != state {
+		return false
+	}
+	if len(tagKeys) > 0 {
+		held := make(map[string]struct{}, len(formula.Tags))
+		for _, tag := range formula.Tags {
+			held[domain.TagKey(tag)] = struct{}{}
+		}
+		for key := range tagKeys {
+			if _, ok := held[key]; !ok {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func timestampPointer(value time.Time) *time.Time {

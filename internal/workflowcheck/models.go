@@ -9,22 +9,33 @@ import (
 
 type formulaView struct {
 	ID      string               `json:"id"`
+	Name    string               `json:"name"`
 	State   domain.FormulaState  `json:"state"`
 	Version int64                `json:"version"`
 	Steps   []domain.FormulaStep `json:"steps"`
+	Tags    []string             `json:"tags"`
+}
+
+type formulaListView struct {
+	Formulas []formulaView `json:"formulas"`
+	Total    int           `json:"total"`
+	Limit    int           `json:"limit"`
+	Offset   int           `json:"offset"`
 }
 
 type vesselView struct {
-	ID          string             `json:"id"`
-	State       domain.VesselState `json:"state"`
-	Version     int64              `json:"version"`
-	ActiveRunID *string            `json:"active_run_id"`
+	ID          string                     `json:"id"`
+	State       domain.VesselState         `json:"state"`
+	Version     int64                      `json:"version"`
+	ActiveRunID *string                    `json:"active_run_id"`
+	Maintenance []domain.MaintenanceWindow `json:"maintenance_windows"`
 }
 
 type runView struct {
 	ID           string                      `json:"id"`
 	State        domain.RunState             `json:"state"`
 	Version      int64                       `json:"version"`
+	FormulaID    string                      `json:"formula_id"`
 	VesselID     *string                     `json:"vessel_id"`
 	Observations []domain.GravityObservation `json:"observations"`
 	Metrics      *domain.RunMetrics          `json:"metrics"`
@@ -45,6 +56,15 @@ func createFormulaPayload(name string) map[string]any {
 		"minimum_days":            7,
 		"maximum_days":            21,
 	}
+}
+
+func createFormulaTaggedPayload(name, style string, tags []string) map[string]any {
+	payload := createFormulaPayload(name)
+	payload["style"] = style
+	if tags != nil {
+		payload["tags"] = tags
+	}
+	return payload
 }
 
 func formulaStepPayload() map[string]any {

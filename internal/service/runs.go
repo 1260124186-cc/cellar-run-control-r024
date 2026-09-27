@@ -81,6 +81,10 @@ func (s *Service) ReserveRun(
 			return domain.FieldError(domain.CodeInvalidInput,
 				"planned_volume_liters", "exceeds vessel capacity")
 		}
+		if vessel.UnderMaintenance(s.clock.Now()) {
+			return domain.NewError(domain.CodeVesselMaintenance,
+				"vessel is scheduled for maintenance at the requested time")
+		}
 		if err := vessel.Reserve(run.ID, s.clock.Now()); err != nil {
 			return err
 		}

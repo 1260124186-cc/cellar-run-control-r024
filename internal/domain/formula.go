@@ -25,6 +25,7 @@ type Formula struct {
 	ID                    string        `json:"id"`
 	Name                  string        `json:"name"`
 	Style                 string        `json:"style"`
+	Tags                  []string      `json:"tags"`
 	TargetOriginalGravity float64       `json:"target_original_gravity"`
 	TargetFinalGravity    float64       `json:"target_final_gravity"`
 	MaxFermentationTempC  float64       `json:"max_fermentation_temp_c"`
@@ -41,6 +42,7 @@ type Formula struct {
 
 func (f Formula) Clone() Formula {
 	cloned := f
+	cloned.Tags = append([]string{}, f.Tags...)
 	cloned.Steps = append([]FormulaStep(nil), f.Steps...)
 	return cloned
 }
@@ -62,6 +64,9 @@ func (f Formula) Validate() error {
 	}
 	if len([]rune(f.Style)) > 80 {
 		return FieldError(CodeInvalidInput, "style", "must not exceed 80 characters")
+	}
+	if err := ValidateTags(f.Tags); err != nil {
+		return err
 	}
 	if f.TargetOriginalGravity < 1.030 || f.TargetOriginalGravity > 1.120 {
 		return FieldError(CodeInvalidInput, "target_original_gravity",
@@ -139,6 +144,17 @@ func (f *Formula) SetSteps(steps []FormulaStep) error {
 	}
 	f.Steps = append([]FormulaStep(nil), steps...)
 	f.UpdatedAt = time.Now().UTC()
+	f.Version++
+	return nil
+}
+
+func (f *Formula) SetTags(tags []string, now time.Time) error {
+	normalized, err := NormalizeTags(tags)
+	if err != nil {
+		return err
+	}
+	f.Tags = normalized
+	f.UpdatedAt = now.UTC()
 	f.Version++
 	return nil
 }
