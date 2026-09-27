@@ -6,8 +6,8 @@ fermentation runs, gravity observations, conditioning, completion metrics, and
 vessel cleaning in one deterministic process.
 
 This repository is a healthy initialization baseline. It has no intentional
-defects and no automated test suite. Tests are intentionally deferred to a
-later engineering task; the production workflow checks in this repository
+defects. Unit tests cover the tag maintenance, filtering, pagination, and
+concurrency surfaces, and the production workflow checks in this repository
 remain available for immediate build and behavior verification.
 
 ## Requirements
@@ -71,8 +71,42 @@ Formula workflow:
 - `GET /v1/formulas`
 - `GET /v1/formulas/{id}`
 - `PUT /v1/formulas/{id}/steps`
+- `PUT /v1/formulas/{id}/tags`
 - `POST /v1/formulas/{id}/approve`
 - `POST /v1/formulas/{id}/retire`
+
+Formula tags:
+
+- `GET /v1/tags`
+- `POST /v1/tags/rename`
+
+`GET /v1/formulas` supports filters that combine with AND:
+
+- `name`: exact full formula name after whitespace and case folding.
+- `style`: case-insensitive substring match on the style label.
+- `state`: one of `draft`, `approved`, `retired`.
+- `tag`: repeatable; a formula must carry every supplied tag to match.
+
+Pagination uses `page` and `page_size` together, both positive integers with
+`page_size` at most 200; supplying one without the other, a non-numeric value,
+or an out-of-range window returns `invalid_pagination`. The response carries
+`total` (the count of the entire filtered set on the snapshot revision),
+`page`, `page_size`, and `revision`. Sorting is by normalized name with the
+formula identifier as tie-breaker, so pages are stable. Without pagination
+parameters the full filtered set is returned and `page`/`page_size` are zero.
+
+Tags are list metadata. Creating a formula and `PUT /v1/formulas/{id}/tags`
+accept up to 25 normalized tags (letters, digits, spaces, hyphens,
+underscores; at most 40 characters). Duplicate tags after normalization
+return `duplicate_tag`; tag maintenance is allowed in every lifecycle state,
+including after approval, and never changes process steps, targets, or run
+references — only subsequent query results.
+
+`GET /v1/tags` returns each tag in use with its formula count plus the
+snapshot `revision`. `POST /v1/tags/rename` requires `X-Expected-Version`
+set to that revision (or the current revision): a rename that lands after a
+concurrent write fails with `revision_conflict`, an unknown source tag with
+`tag_not_found`, and a target already in use with `duplicate_tag`.
 
 Vessel workflow:
 
@@ -115,6 +149,7 @@ Run each production workflow check separately:
 go run ./cmd/fermentctl check formula-approval
 go run ./cmd/fermentctl check vessel-run-lifecycle
 go run ./cmd/fermentctl check observations-completion
+go run ./cmd/fermentctl check formula-tags
 ```
 
 Each check creates a temporary snapshot directory, starts the real HTTP
@@ -153,9 +188,11 @@ automated tests or request a focused repair without changing the public API.
 
 ## Test Boundary
 
-This stage does not create unit tests, integration tests, test fixtures, or an
-E2E suite. The later test task owns systematic coverage of validation limits,
-state transitions, concurrency, persistence failures, and numeric edge cases.
+Unit tests (`go test ./...`) cover tag normalization and limits, tag
+maintenance after approval, list filters, stable pagination totals, HTTP
+error mapping, and concurrent tag renames. Broader systematic coverage of
+validation limits, state transitions, persistence failures, and numeric edge
+cases remains available for a later test task.
 
 ## Scope
 

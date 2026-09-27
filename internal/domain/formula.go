@@ -31,6 +31,7 @@ type Formula struct {
 	MinimumDays           int           `json:"minimum_days"`
 	MaximumDays           int           `json:"maximum_days"`
 	Steps                 []FormulaStep `json:"steps"`
+	Tags                  []string      `json:"tags"`
 	State                 FormulaState  `json:"state"`
 	Version               int64         `json:"version"`
 	CreatedAt             time.Time     `json:"created_at"`
@@ -42,6 +43,7 @@ type Formula struct {
 func (f Formula) Clone() Formula {
 	cloned := f
 	cloned.Steps = append([]FormulaStep(nil), f.Steps...)
+	cloned.Tags = append([]string(nil), f.Tags...)
 	return cloned
 }
 
@@ -139,6 +141,21 @@ func (f *Formula) SetSteps(steps []FormulaStep) error {
 	}
 	f.Steps = append([]FormulaStep(nil), steps...)
 	f.UpdatedAt = time.Now().UTC()
+	f.Version++
+	return nil
+}
+
+// SetTags replaces the tag list atomically. Tags are list-filter metadata,
+// not process content, so they may change in any lifecycle state, including
+// after approval, without touching steps, gravity targets, or run references.
+// The version bump keeps optimistic concurrency intact for tag maintenance.
+func (f *Formula) SetTags(tags []string, now time.Time) error {
+	normalized, err := NormalizeTags(tags)
+	if err != nil {
+		return err
+	}
+	f.Tags = normalized
+	f.UpdatedAt = now.UTC()
 	f.Version++
 	return nil
 }

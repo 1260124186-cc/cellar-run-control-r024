@@ -23,6 +23,9 @@ const (
 	CodeObservationConflict Code = "observation_conflict"
 	CodeRevisionConflict    Code = "revision_conflict"
 	CodeStorage             Code = "storage_error"
+	CodeDuplicateTag        Code = "duplicate_tag"
+	CodeTagNotFound         Code = "tag_not_found"
+	CodeInvalidPagination   Code = "invalid_pagination"
 )
 
 type Error struct {

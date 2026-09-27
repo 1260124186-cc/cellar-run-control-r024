@@ -78,6 +78,10 @@ func normalizeSnapshot(value domain.Snapshot) (domain.Snapshot, error) {
 	if value.RunIndex == nil {
 		value.RunIndex = map[string]string{}
 	}
+	for id, formula := range value.Formulas {
+		formula.Tags = domain.NormalizeStoredTags(formula.Tags)
+		value.Formulas[id] = formula
+	}
 	if err := validateIndexes(value); err != nil {
 		return domain.Snapshot{}, err
 	}
@@ -147,27 +151,28 @@ func (s *Store) View(visitor func(domain.Snapshot) error) error {
 	return visitor(copied)
 }
 
-func (s *Store) Update(expected *int64, mutate func(*domain.Snapshot) error) error {
+func (s *Store) Update(expected *int64, mutate func(*domain.Snapshot) error) (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if expected != nil && *expected != s.snapshot.Revision {
-		return domain.NewError(domain.CodeRevisionConflict,
+		return 0, domain.NewError(domain.CodeRevisionConflict,
 			"the supplied revision does not match the current snapshot")
 	}
 	candidate := s.snapshot.Clone()
 	if err := mutate(&candidate); err != nil {
-		return err
+		return 0, err
 	}
 	candidate.Revision = s.snapshot.Revision + 1
 	candidate.UpdatedAt = s.now()
 	if err := writeSnapshot(s.path, candidate); err != nil {
-		return domain.NewError(domain.CodeStorage, err.Error())
+		return 0, domain.NewError(domain.CodeStorage, err.Error())
 	}
 	s.snapshot = candidate
-	return nil
+	return candidate.Revision, nil
 }
 
 func (s *Store) Execute(mutator func(*domain.Snapshot) error) error {
-	return s.Update(nil, mutator)
+	_, err := s.Update(nil, mutator)
+	return err
 }

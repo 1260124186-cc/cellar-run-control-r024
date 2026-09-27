@@ -8,10 +8,27 @@ import (
 )
 
 type formulaView struct {
-	ID      string               `json:"id"`
-	State   domain.FormulaState  `json:"state"`
-	Version int64                `json:"version"`
-	Steps   []domain.FormulaStep `json:"steps"`
+	ID                    string               `json:"id"`
+	Name                  string               `json:"name"`
+	Style                 string               `json:"style"`
+	State                 domain.FormulaState  `json:"state"`
+	Version               int64                `json:"version"`
+	Steps                 []domain.FormulaStep `json:"steps"`
+	Tags                  []string             `json:"tags"`
+	TargetOriginalGravity float64              `json:"target_original_gravity"`
+}
+
+type formulaListView struct {
+	Formulas []formulaView `json:"formulas"`
+	Total    int           `json:"total"`
+	Page     int           `json:"page"`
+	PageSize int           `json:"page_size"`
+	Revision int64         `json:"revision"`
+}
+
+type tagCountView struct {
+	Tag   string `json:"tag"`
+	Count int    `json:"count"`
 }
 
 type vesselView struct {

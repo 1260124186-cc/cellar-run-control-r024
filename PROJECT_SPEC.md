@@ -26,12 +26,20 @@ deferred to a later engineering task.
 
 A formula contains an identifier, normalized name, style label, target original
 gravity, target final gravity, maximum fermentation temperature, minimum and
-maximum planned days, ordered process steps, lifecycle state, version, and
-timestamps.
+maximum planned days, ordered process steps, tag list, lifecycle state,
+version, and timestamps.
 
 States are `draft`, `approved`, and `retired`.
 
 - Names are unique after case folding and whitespace normalization.
+- A formula carries 0 to 25 tags. Each tag is folded like a name, lower-cased,
+  and may use letters, digits, underscores, hyphens, and single internal
+  spaces, at most 40 runes. Tags are stored de-duplicated and sorted.
+- Repeating a tag after normalization in one maintenance request returns
+  `duplicate_tag` instead of silently dropping it.
+- Tags are list metadata: they may change in any lifecycle state, including
+  after approval. Tag maintenance bumps the formula version but never changes
+  steps, targets, or run references.
 - Target original gravity is in the inclusive range 1.030 to 1.120.
 - Target final gravity is positive, lower than target original gravity, and
   differs from it by at least 0.005.
@@ -42,7 +50,8 @@ States are `draft`, `approved`, and `retired`.
 - Step temperatures are in the inclusive range 5 to 90 Celsius.
 - Step hold times are 1 to 1440 minutes.
 - `draft -> approved` requires a complete valid step list.
-- An approved formula is immutable.
+- An approved formula's process content (steps and targets) is immutable;
+  its tag list remains maintainable.
 - `approved -> retired` is allowed only when no run currently uses it.
 
 ### Vessel
@@ -150,6 +159,32 @@ transitions return stable failures without changing persisted state.
 This path crosses HTTP protocol handling, application orchestration, numeric
 domain rules, and snapshot storage.
 
+### 4. Formula Tag Maintenance And Querying
+
+Public entry points are:
+
+- `GET /v1/formulas` (with `name`, `style`, `state`, repeated `tag`, and
+  paired `page`/`page_size` query parameters)
+- `PUT /v1/formulas/{id}/tags`
+- `GET /v1/tags`
+- `POST /v1/tags/rename`
+- `GET /v1/formulas/{id}`
+
+The client filters formulas by full name, style substring, state, and an
+AND-combined set of tags, and pages the result stably. Every response reports
+the `total` of the full filtered set on one snapshot revision, so totals and
+pages never disagree. The client maintains tags on draft and approved
+formulas, lists the tag directory, and renames a tag across every carrier
+using the directory revision as `X-Expected-Version`. Duplicate tags, invalid
+or half-supplied pagination, unknown source tags, rename collisions, and stale
+concurrent renames return stable error codes (`duplicate_tag`,
+`invalid_pagination`, `tag_not_found`, and `revision_conflict`) without
+partial writes. Tag changes affect only later queries: approved process
+content and run references are untouched.
+
+This path crosses HTTP query handling, application orchestration, domain
+normalization, and revisioned snapshot coordination.
+
 ## Modules
 
 - `cmd/fermentctl`: executable entry point for the HTTP service and bounded
@@ -204,19 +239,22 @@ workflow checks use temporary directories.
 
 ## Validation Plan
 
-The baseline declares `testing: deferred` and intentionally contains no unit
-tests, fixtures, integration tests, or browser E2E files. A later verification
-task owns systematic tests for validation boundaries, state transitions,
-numeric calculations, stale revisions, storage failures, and concurrent
-reservation attempts.
+The baseline declared `testing: deferred` and shipped without unit tests,
+fixtures, integration tests, or browser E2E files. Tag maintenance, list
+filtering, pagination consistency, HTTP error mapping, and concurrent rename
+handling now have focused `go test ./...` coverage; systematic tests for the
+remaining validation boundaries, state transitions, numeric calculations,
+stale revisions, storage failures, and concurrent reservation attempts stay
+with the later verification task.
 
-The current build command is `go build ./...`. Three bounded production checks
+The current build command is `go build ./...`. Four bounded production checks
 start the real HTTP handler, issue real JSON requests, check success and failure
 behavior, and exit without external services:
 
 - `go run ./cmd/fermentctl check formula-approval`
 - `go run ./cmd/fermentctl check vessel-run-lifecycle`
 - `go run ./cmd/fermentctl check observations-completion`
+- `go run ./cmd/fermentctl check formula-tags`
 
 ## Scope Limits
 

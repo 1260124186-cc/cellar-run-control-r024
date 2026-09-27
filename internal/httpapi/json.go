@@ -77,15 +77,16 @@ func writeDomainError(response http.ResponseWriter, err error) {
 
 func statusForCode(code domain.Code) int {
 	switch code {
-	case domain.CodeInvalidInput:
+	case domain.CodeInvalidInput, domain.CodeInvalidPagination:
 		return http.StatusBadRequest
-	case domain.CodeFormulaNotFound, domain.CodeVesselNotFound, domain.CodeRunNotFound:
+	case domain.CodeFormulaNotFound, domain.CodeVesselNotFound, domain.CodeRunNotFound,
+		domain.CodeTagNotFound:
 		return http.StatusNotFound
 	case domain.CodeFormulaNameConflict, domain.CodeFormulaState,
 		domain.CodeFormulaInUse, domain.CodeVesselConflict,
 		domain.CodeVesselUnavailable, domain.CodeVesselState,
 		domain.CodeRunConflict, domain.CodeRunState,
-		domain.CodeObservationConflict:
+		domain.CodeObservationConflict, domain.CodeDuplicateTag:
 		return http.StatusConflict
 	case domain.CodeRevisionConflict:
 		return http.StatusPreconditionFailed
